@@ -66,7 +66,7 @@ impl Model {
     pub fn load<P: AsRef<Path>>(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, path: P) -> Result<(Self, Vec<wgpu::CommandBuffer>), failure::Error> {
         let (obj_models, obj_materials) = tobj::load_obj(path.as_ref())?;
 
-        // We're assuming that the texture files are stored with the obj file        
+        // We're assuming that the texture files are stored with the obj file
         let containing_folder = path.as_ref().parent().unwrap();
 
         // Our `Texure` struct currently returns a `CommandBuffer` when it's created so we need to collect those and return them.
@@ -76,7 +76,7 @@ impl Model {
         for mat in obj_materials {
             let diffuse_path = mat.diffuse_texture;
             let (diffuse_texture, cmds) = texture::Texture::load(&device, containing_folder.join(diffuse_path))?;
-            
+
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout,
                 bindings: &[
@@ -121,6 +121,7 @@ impl Model {
                 });
             }
 
+            println!("num vertices = {}, num indices = {}", vertices.len(), m.mesh.indices.len());
             let vertex_buffer = device
                 .create_buffer_mapped(vertices.len(), wgpu::BufferUsage::VERTEX)
                 .fill_from_slice(&vertices);
@@ -137,27 +138,28 @@ impl Model {
                 material: m.mesh.material_id,
             });
         }
-        
+
         Ok((Self { meshes, materials, }, command_buffers))
     }
 }
 
 pub trait DrawModel {
-    fn draw_mesh(&mut self, mesh: &Mesh, material: Option<&Material>);
-    fn draw_mesh_instanced(&mut self, mesh: &Mesh, material: Option<&Material>, instances: Range<u32>);
+    fn draw_mesh(&mut self, mesh: &Mesh, material: Option<&Material>, uniform_bg: &wgpu::BindGroup);
+    fn draw_mesh_instanced(&mut self, mesh: &Mesh, material: Option<&Material>, instances: Range<u32>, uniform_bg: &wgpu::BindGroup);
 }
 
 impl<'a> DrawModel for wgpu::RenderPass<'a> {
-    fn draw_mesh(&mut self, mesh: &Mesh, material: Option<&Material>) {
-        self.draw_mesh_instanced(mesh, material, 0..1);
+    fn draw_mesh(&mut self, mesh: &Mesh, material: Option<&Material>, uniform_bg: &wgpu::BindGroup) {
+        self.draw_mesh_instanced(mesh, material, 0..1, uniform_bg);
     }
 
-    fn draw_mesh_instanced(&mut self, mesh: &Mesh, material: Option<&Material>, instances: Range<u32>) {
+    fn draw_mesh_instanced(&mut self, mesh: &Mesh, material: Option<&Material>, instances: Range<u32>, uniform_bg: &wgpu::BindGroup) {
         self.set_vertex_buffers(0, &[(&mesh.vertex_buffer, 0)]);
         self.set_index_buffer(&mesh.index_buffer, 0);
         if material.is_some() {
             let bind_group = &material.unwrap().bind_group;
             self.set_bind_group(0, bind_group, &[]);
+            self.set_bind_group(1, uniform_bg, &[]);
         }
         self.draw_indexed(0..mesh.num_elements, 0, instances);
     }
